@@ -14,13 +14,16 @@ import static android.media.MediaCodecInfo.CodecProfileLevel.AVCLevel3;
 import static android.media.MediaCodecInfo.CodecProfileLevel.AVCProfileHigh;
 import static android.media.MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR;
 
+import android.graphics.Bitmap;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecInfo.CodecCapabilities;
 import android.media.MediaFormat;
 import android.opengl.GLES20;
+import android.opengl.GLUtils;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Surface;
 import androidx.annotation.Nullable;
 import java.io.IOException;
@@ -421,11 +424,24 @@ class HardwareVideoEncoder implements VideoEncoder {
     try {
       // TODO(perkj): glClear() shouldn't be necessary since every pixel is covered anyway,
       // but it's a workaround for bug webrtc:5147.
+      GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
       GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+      GLES20.glEnable(GLES20.GL_BLEND); //Turn on the mixing function
+      GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA); //Specify mixed mode
       // It is not necessary to release this frame because it doesn't own the buffer.
       VideoFrame derotatedFrame =
           new VideoFrame(videoFrame.getBuffer(), 0 /* rotation */, videoFrame.getTimestampNs());
       videoFrameDrawer.drawFrame(derotatedFrame, textureDrawer, null /* additionalRenderMatrix */);
+
+      if (OverlayManager.shouldDraw && OverlayManager.isReady) {
+        Matrix transformMatrix = ((VideoFrame.TextureBuffer) derotatedFrame.getBuffer()).getTransformMatrix();
+        VideoFrame.TextureBuffer buffer = OverlayManager.getBuffer(transformMatrix);
+        if (buffer != null) {
+          VideoFrameDrawer.drawTexture(textureDrawer, buffer, OverlayManager.getDrawMatrix(), buffer.getWidth(), buffer.getHeight(), 0, 0, textureEglBase.surfaceWidth(), textureEglBase.surfaceHeight());
+          buffer.release();
+        }
+      }
+
       textureEglBase.swapBuffers(TimeUnit.MICROSECONDS.toNanos(presentationTimestampUs));
     } catch (RuntimeException e) {
       Logging.e(TAG, "encodeTexture failed", e);

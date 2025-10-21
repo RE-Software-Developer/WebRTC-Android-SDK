@@ -10,9 +10,11 @@
 
 package org.webrtc;
 
+import android.hardware.Camera;
 import android.os.SystemClock;
 import androidx.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
 
@@ -172,9 +174,14 @@ public class Camera1Enumerator implements CameraEnumerator {
 
   // Returns the name of the camera with camera index. Returns null if the
   // camera can not be used.
+  // Note: This function used to return the name for all valid cameras. It has been changed to only return the name for the main front and back camera
+  // This is because some of the other cameras have an undesirable field of view, and don't allow the flash
   static @Nullable String getDeviceName(int index) {
     android.hardware.Camera.CameraInfo info = getCameraInfo(index);
-    if (info == null) {
+
+    List<Integer> allowedCamerasList = Arrays.asList(Camera.CameraInfo.CAMERA_FACING_BACK, Camera.CameraInfo.CAMERA_FACING_FRONT);
+
+    if (info == null || !allowedCamerasList.contains(index)) {
       return null;
     }
 

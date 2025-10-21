@@ -11,11 +11,16 @@
 package org.webrtc;
 
 import android.content.Context;
+import android.graphics.Matrix;
+import android.graphics.Rect;
 import android.hardware.Camera;
 import android.os.Handler;
 import android.os.SystemClock;
+import androidx.annotation.Nullable;
+import android.view.Surface;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
@@ -24,6 +29,7 @@ import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
 class Camera1Session implements CameraSession {
   private static final String TAG = "Camera1Session";
   private static final int NUMBER_OF_CAPTURE_BUFFERS = 3;
+  private static final int zoomSpeed = 4;
 
   private static final Histogram camera1StartTimeMsHistogram =
       Histogram.createCounts("WebRTC.Android.Camera1.StartTimeMs", 1, 10000, 50);
@@ -53,19 +59,11 @@ class Camera1Session implements CameraSession {
   @SuppressWarnings("ByteBufferBackingArray")
   public static void create(final CreateSessionCallback callback, final Events events,
       final boolean captureToTexture, final Context applicationContext,
-      final SurfaceTextureHelper surfaceTextureHelper, final String cameraName,
-      final int width, final int height, final int framerate) {
+      final SurfaceTextureHelper surfaceTextureHelper, final int cameraId, final int width,
+      final int height, final int framerate) {
     final long constructionTimeNs = System.nanoTime();
-    Logging.d(TAG, "Open camera " + cameraName);
+    Logging.d(TAG, "Open camera " + cameraId);
     events.onCameraOpening();
-
-    final int cameraId;
-    try {
-      cameraId = Camera1Enumerator.getCameraIndex(cameraName);
-    } catch (IllegalArgumentException e) {
-      callback.onFailure(FailureType.ERROR, e.getMessage());
-      return;
-    }
 
     final Camera camera;
     try {
@@ -113,13 +111,14 @@ class Camera1Session implements CameraSession {
     }
 
     // Calculate orientation manually and send it as CVO instead.
-    try {
-      camera.setDisplayOrientation(0 /* degrees */);
-    } catch (RuntimeException e) {
-      camera.release();
-      callback.onFailure(FailureType.ERROR, e.getMessage());
-      return;
-    }
+//    try {
+//      camera.setDisplayOrientation(0 /* degrees */);
+//    } catch (RuntimeException e) {
+//      camera.release();
+//      callback.onFailure(FailureType.ERROR, e.getMessage());
+//      return;
+//    }
+    camera.setDisplayOrientation(0 /* degrees */);
 
     callback.onDone(new Camera1Session(events, captureToTexture, applicationContext,
         surfaceTextureHelper, cameraId, camera, info, captureFormat, constructionTimeNs));
@@ -139,8 +138,9 @@ class Camera1Session implements CameraSession {
     if (parameters.isVideoStabilizationSupported()) {
       parameters.setVideoStabilization(true);
     }
-    if (focusModes != null && focusModes.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO)) {
-      parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
+    //Here we set noncontinuous autofocus. This can changed to allow customisation if needed
+    if (parameters.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_AUTO)) {
+      parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
     }
     camera.setParameters(parameters);
   }
@@ -200,6 +200,51 @@ class Camera1Session implements CameraSession {
     }
   }
 
+  @Override
+  public void enableTorch() {
+    Logging.d(TAG, "Enable torch camera1 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      enableTorchInternal();
+    }
+  }
+
+  @Override
+  public void disableTorch() {
+    Logging.d(TAG, "Disable torch camera1 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      disableTorchInternal();
+    }
+  }
+
+  @Override
+  public void zoomIn() {
+    Logging.d(TAG, "Zoom in camera1 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      zoomInInternal();
+    }
+  }
+
+  @Override
+  public void zoomOut() {
+    Logging.d(TAG, "Zoom out camera1 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      zoomOutInternal();
+    }
+  }
+
+  @Override
+  public boolean focus(Rect focusArea) {
+    Logging.d(TAG, "Focus camera1 session on camera " + cameraId);
+    if (state != SessionState.STOPPED) {
+      return focusInternal(focusArea);
+    }
+    return false;
+  }
+
   private void startCapturing() {
     Logging.d(TAG, "Start capturing");
     checkIsOnCameraThread();
@@ -257,6 +302,141 @@ class Camera1Session implements CameraSession {
     Logging.d(TAG, "Stop done");
   }
 
+  private void enableTorchInternal() {
+    Logging.d(TAG, "Enable torch internal");
+    checkIsOnCameraThread();
+    if (state == SessionState.STOPPED) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    try {
+      Camera.Parameters parameters = camera.getParameters();
+      parameters.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+      camera.setParameters(parameters);
+    } catch (Exception e) {
+      e.printStackTrace();
+      return;
+    }
+
+    Logging.d(TAG, "Enable torch done");
+  }
+
+  private void disableTorchInternal() {
+    Logging.d(TAG, "Disable torch internal");
+    checkIsOnCameraThread();
+    if (state == SessionState.STOPPED) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    try {
+      Camera.Parameters parameters = camera.getParameters();
+      parameters.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);
+      camera.setParameters(parameters);
+    } catch(Exception e) {
+      e.printStackTrace();
+      return;
+    }
+
+    Logging.d(TAG, "Disable torch done");
+  }
+
+  private void zoomInInternal() {
+    Logging.d(TAG, "Zoom In internal");
+    checkIsOnCameraThread();
+    if (state == SessionState.STOPPED) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    try {
+      Camera.Parameters parameters = camera.getParameters();
+      int currentZoomLevel = parameters.getZoom();
+      int newZoomLevel = Math.min(currentZoomLevel + zoomSpeed, parameters.getMaxZoom());
+      if (newZoomLevel == currentZoomLevel) {
+        return;
+      }
+
+      parameters.setZoom(newZoomLevel);
+      camera.setParameters(parameters);
+    } catch(Exception e) {
+      e.printStackTrace();
+      return;
+    }
+
+    Logging.d(TAG, "Zoom In done");
+  }
+
+  private void zoomOutInternal() {
+    Logging.d(TAG, "Zoom Out internal");
+    checkIsOnCameraThread();
+    if (state == SessionState.STOPPED) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    try {
+      Camera.Parameters parameters = camera.getParameters();
+      int currentZoomLevel = parameters.getZoom();
+      int newZoomLevel = Math.max(0, currentZoomLevel - zoomSpeed);
+      if (newZoomLevel == currentZoomLevel) {
+        return;
+      }
+
+      parameters.setZoom(newZoomLevel);
+      camera.setParameters(parameters);
+    } catch(Exception e) {
+      e.printStackTrace();
+      return;
+    }
+
+    Logging.d(TAG, "Zoom Out done");
+  }
+
+  private boolean focusInternal(Rect focusRect) {
+    Logging.d(TAG, "Focus internal");
+    if (state == SessionState.STOPPED) {
+      Logging.d(TAG, "Camera is already stopped");
+      return false;
+    }
+
+    try {
+      Camera.Parameters parameters = camera.getParameters();
+      List<String> supportedFocusModes = parameters.getSupportedFocusModes();
+
+      if (supportedFocusModes != null && supportedFocusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO) && parameters.getFocusMode().equals(Camera.Parameters.FOCUS_MODE_AUTO)) {
+
+        ArrayList<Camera.Area> focusAreaList = new ArrayList<>();
+        focusAreaList.add(new Camera.Area(focusRect, 1000));
+
+        if (parameters.getMaxNumFocusAreas() > 0) {
+          parameters.setFocusAreas(focusAreaList);
+        }
+
+        if (parameters.getMaxNumMeteringAreas() > 0) {
+          parameters.setMeteringAreas(focusAreaList);
+        }
+
+        camera.cancelAutoFocus();
+        camera.setParameters(parameters);
+        camera.autoFocus(new Camera.AutoFocusCallback() {
+          @Override
+          public void onAutoFocus(boolean b, Camera camera) {
+            // currently set to auto-focus on single touch
+          }
+        });
+      }
+
+      Logging.d(TAG, "Focus done");
+      return true;
+    } catch(Exception e) {
+      e.printStackTrace();
+      return false;
+    }
+  }
+
+
   private void listenForTextureFrames() {
     surfaceTextureHelper.startListening((VideoFrame frame) -> {
       checkIsOnCameraThread();
@@ -273,16 +453,19 @@ class Camera1Session implements CameraSession {
         firstFrameReported = true;
       }
 
+      //Note: I have removed this since the OS frame mirror and orientation seems fine
       // Undo the mirror that the OS "helps" us with.
       // http://developer.android.com/reference/android/hardware/Camera.html#setDisplayOrientation(int)
-      final VideoFrame modifiedFrame =
-          new VideoFrame(CameraSession.createTextureBufferWithModifiedTransformMatrix(
-                             (TextureBufferImpl) frame.getBuffer(),
-                             /* mirror= */ info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT,
-                             /* rotation= */ 0),
-              /* rotation= */ getFrameOrientation(), frame.getTimestampNs());
-      events.onFrameCaptured(Camera1Session.this, modifiedFrame);
-      modifiedFrame.release();
+//      final VideoFrame modifiedFrame = new VideoFrame(
+//          CameraSession.createTextureBufferWithModifiedTransformMatrix(
+//              (TextureBufferImpl) frame.getBuffer(),
+//              /* mirror= */ info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT,
+//              /* rotation= */ 0),
+//          /* rotation= */ getFrameOrientation(), frame.getTimestampNs());
+//      events.onFrameCaptured(Camera1Session.this, modifiedFrame);
+//      modifiedFrame.release();
+
+      events.onFrameCaptured(Camera1Session.this, frame);
     });
   }
 

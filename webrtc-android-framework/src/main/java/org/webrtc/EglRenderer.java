@@ -226,6 +226,9 @@ public class EglRenderer implements VideoSink {
               }
             }
           });
+
+      OverlayManager.setRenderThreadHandler(renderThreadHandler);
+
       // Create EGL context on the newly created render thread. It should be possibly to create the
       // context on this thread and make it current on the render thread, but this causes failure on
       // some Marvel based JB devices. https://bugs.chromium.org/p/webrtc/issues/detail?id=6350.
@@ -659,10 +662,22 @@ public class EglRenderer implements VideoSink {
 
     try {
       if (shouldRenderFrame) {
-        GLES20.glClearColor(0 /* red */, 0 /* green */, 0 /* blue */, 0 /* alpha */);
+        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+        GLES20.glEnable(GLES20.GL_BLEND); //Turn on the mixing function
+        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA); //Specify mixed mode
+
         frameDrawer.drawFrame(frame, drawer, drawMatrix, 0 /* viewportX */, 0 /* viewportY */,
             eglBase.surfaceWidth(), eglBase.surfaceHeight());
+
+        if (OverlayManager.shouldDraw && OverlayManager.isReady) {
+          Matrix transformMatrix = ((VideoFrame.TextureBuffer) frame.getBuffer()).getTransformMatrix();
+          VideoFrame.TextureBuffer buffer = OverlayManager.getBuffer(transformMatrix);
+          if (buffer != null) {
+            VideoFrameDrawer.drawTexture(drawer, buffer, OverlayManager.getDrawMatrix(), buffer.getWidth(), buffer.getHeight(), 0, 0, eglBase.surfaceWidth(), eglBase.surfaceHeight());
+            buffer.release();
+          }
+        }
 
         final long swapBuffersStartTimeNs = System.nanoTime();
         if (usePresentationTimeStamp) {

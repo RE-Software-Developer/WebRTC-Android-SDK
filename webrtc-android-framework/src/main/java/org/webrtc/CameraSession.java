@@ -12,6 +12,7 @@ package org.webrtc;
 
 import android.content.Context;
 import android.graphics.Matrix;
+import android.graphics.Rect;
 import android.view.WindowManager;
 import android.view.Surface;
 
@@ -38,6 +39,32 @@ interface CameraSession {
    * If waitCameraStop is true, also waits for the camera to stop.
    */
   void stop();
+
+  /**
+   * Enable camera torch
+   */
+  void enableTorch();
+
+  /**
+   * Disable camera torch
+   */
+  void disableTorch();
+
+  /**
+   * Zooms in the camera, if possible
+   */
+  void zoomIn();
+
+  /**
+   * Zooms in the camera, if possible
+   */
+  void zoomOut();
+
+  /**
+   * Focus the camera, if possible
+   * Returns whether operation succeeded
+   */
+  boolean focus(Rect focusArea);
 
   static int getDeviceOrientation(Context context) {
     final WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);

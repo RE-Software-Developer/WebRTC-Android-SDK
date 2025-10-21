@@ -11,6 +11,7 @@
 package org.webrtc;
 
 import android.content.Context;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import androidx.annotation.Nullable;
@@ -359,6 +360,56 @@ abstract class CameraCapturer implements CameraVideoCapturer {
   }
 
   @Override
+  public void enableTorch(final CameraSwitchHandler switchEventsHandler) {
+    Logging.d(TAG, "enableTorch");
+    cameraThreadHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        enableTorchInternal(switchEventsHandler);
+      }
+    });
+  }
+
+  @Override
+  public void disableTorch(final CameraSwitchHandler switchEventsHandler) {
+    Logging.d(TAG, "disableTorch");
+    cameraThreadHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        disableTorchInternal(switchEventsHandler);
+      }
+    });
+  }
+
+  @Override
+  public void zoomIn() {
+    Logging.d(TAG, "setZoom");
+    cameraThreadHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        zoomInInternal();
+      }
+    });
+  }
+
+  @Override
+  public void zoomOut() {
+    Logging.d(TAG, "setZoom");
+    cameraThreadHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        zoomOutInternal();
+      }
+    });
+  }
+
+  @Override
+  public boolean focus(Rect focusArea) {
+    Logging.d(TAG, "Focus");
+    return focusInternal(focusArea);
+  }
+
+  @Override
   public boolean isScreencast() {
     return false;
   }
@@ -436,6 +487,131 @@ abstract class CameraCapturer implements CameraVideoCapturer {
       createSessionInternal(0);
     }
     Logging.d(TAG, "switchCamera done");
+  }
+
+  private void enableTorchInternal(@Nullable final CameraSwitchHandler switchEventsHandler) {
+    Logging.d(TAG, "enableTorch internal");
+
+    synchronized (stateLock) {
+      if (switchState != SwitchState.IDLE) {
+        reportCameraSwitchError("enableTorch: Camera switch in progress.", switchEventsHandler);
+        return;
+      }
+      if (!sessionOpening && currentSession == null) {
+        reportCameraSwitchError("enableTorch: camera is not running.", switchEventsHandler);
+        return;
+      }
+
+      this.switchEventsHandler = switchEventsHandler;
+//      if (sessionOpening) {
+//        switchState = SwitchState.PENDING;
+//        return;
+//      } else {
+//        switchState = SwitchState.IN_PROGRESS;
+//      }
+
+      Logging.d(TAG, "enableTorch: enabling");
+      final CameraSession cameraSession = currentSession;
+      cameraThreadHandler.post(new Runnable() {
+        @Override
+        public void run() {
+          cameraSession.enableTorch();
+        }
+      });
+    }
+    Logging.d(TAG, "enableTorch done");
+  }
+
+  private void disableTorchInternal(@Nullable final CameraSwitchHandler switchEventsHandler) {
+    Logging.d(TAG, "enableTorch internal");
+
+    synchronized (stateLock) {
+      if (switchState != SwitchState.IDLE) {
+        reportCameraSwitchError("enableTorch: Camera switch in progress.", switchEventsHandler);
+        return;
+      }
+      if (!sessionOpening && currentSession == null) {
+        reportCameraSwitchError("enableTorch: camera is not running.", switchEventsHandler);
+        return;
+      }
+
+      this.switchEventsHandler = switchEventsHandler;
+//      if (sessionOpening) {
+//        switchState = SwitchState.PENDING;
+//        return;
+//      } else {
+//        switchState = SwitchState.IN_PROGRESS;
+//      }
+
+      Logging.d(TAG, "enableTorch: enabling");
+      final CameraSession cameraSession = currentSession;
+      cameraThreadHandler.post(new Runnable() {
+        @Override
+        public void run() {
+          cameraSession.disableTorch();
+        }
+      });
+    }
+    Logging.d(TAG, "enableTorch done");
+  }
+
+  private void zoomInInternal() {
+    Logging.d(TAG, "zoomIn internal");
+
+    synchronized (stateLock) {
+      if (!sessionOpening && currentSession == null) {
+        reportCameraSwitchError("zoomIn: camera is not running.", switchEventsHandler);
+        return;
+      }
+
+      Logging.d(TAG, "zoomIn");
+      final CameraSession cameraSession = currentSession;
+      cameraThreadHandler.post(new Runnable() {
+        @Override
+        public void run() {
+          cameraSession.zoomIn();
+        }
+      });
+    }
+    Logging.d(TAG, "zoomIn done");
+  }
+
+  private void zoomOutInternal() {
+    Logging.d(TAG, "zoomOut internal");
+
+    synchronized (stateLock) {
+      if (!sessionOpening && currentSession == null) {
+        reportCameraSwitchError("zoomOut: camera is not running.", switchEventsHandler);
+        return;
+      }
+
+      Logging.d(TAG, "zoomOut");
+      final CameraSession cameraSession = currentSession;
+      cameraThreadHandler.post(new Runnable() {
+        @Override
+        public void run() {
+          cameraSession.zoomOut();
+        }
+      });
+    }
+    Logging.d(TAG, "zoomOut done");
+  }
+
+  private boolean focusInternal(Rect focusArea) {
+    Logging.d(TAG, "focus internal");
+
+    synchronized (stateLock) {
+      if (currentSession == null) {
+        reportCameraSwitchError("focus: camera is not running.", switchEventsHandler);
+        return false;
+      }
+
+      Logging.d(TAG, "focus");
+
+      boolean focusSuccess = currentSession.focus(focusArea);
+      Logging.d(TAG, "focus done");
+      return focusSuccess;
+    }
   }
 
   private void checkIsOnCameraThread() {

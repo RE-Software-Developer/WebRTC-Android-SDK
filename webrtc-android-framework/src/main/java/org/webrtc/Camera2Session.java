@@ -11,6 +11,9 @@
 package org.webrtc;
 
 import android.content.Context;
+import android.graphics.Matrix;
+import android.graphics.Rect;
+import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -374,6 +377,57 @@ class Camera2Session implements CameraSession {
     }
   }
 
+  @Override
+  public void enableTorch() {
+    Logging.d(TAG, "Enable torch camera2 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      state = SessionState.STOPPED;
+      enableTorchInternal();
+    }
+  }
+
+  @Override
+  public void disableTorch() {
+    Logging.d(TAG, "Disable torch camera2 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      state = SessionState.STOPPED;
+      disableTorchInternal();
+    }
+  }
+
+  @Override
+  public void zoomIn() {
+    Logging.d(TAG, "Set zoom camera2 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      state = SessionState.STOPPED;
+      zoomInInternal();
+    }
+  }
+
+  @Override
+  public void zoomOut() {
+    Logging.d(TAG, "Set zoom camera2 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      state = SessionState.STOPPED;
+      zoomOutInternal();
+    }
+  }
+
+  @Override
+  public boolean focus(Rect focusArea) {
+    Logging.d(TAG, "Focus camera2 session on camera " + cameraId);
+    checkIsOnCameraThread();
+    if (state != SessionState.STOPPED) {
+      state = SessionState.STOPPED;
+      return focusInternal(focusArea);
+    }
+    return false;
+  }
+
   private void stopInternal() {
     Logging.d(TAG, "Stop internal");
     checkIsOnCameraThread();
@@ -394,6 +448,76 @@ class Camera2Session implements CameraSession {
     }
 
     Logging.d(TAG, "Stop done");
+  }
+
+  private void enableTorchInternal() {
+    Logging.d(TAG, "Enable torch internal");
+    checkIsOnCameraThread();
+
+    if (captureSession == null) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    try {
+      cameraManager.setTorchMode(cameraId, true);
+      Logging.d(TAG, "Enable torch done");
+    } catch (CameraAccessException e) {
+      e.printStackTrace();
+      Logging.d(TAG, "Enable torch failed");
+    }
+  }
+
+  private void disableTorchInternal() {
+    Logging.d(TAG, "Disable torch internal");
+    checkIsOnCameraThread();
+
+    if (captureSession == null) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    try {
+      cameraManager.setTorchMode(cameraId, false);
+      Logging.d(TAG, "Disable torch done");
+    } catch (CameraAccessException e) {
+      e.printStackTrace();
+      Logging.d(TAG, "Disable torch failed");
+    }
+  }
+
+  private void zoomInInternal() {
+    Logging.d(TAG, "Zoom In internal");
+    if (captureSession == null) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    //TODO(riccardo): implement
+    Logging.e(TAG, "Zoom In not implemented for Camera2 API yet. Please use Camera1.");
+  }
+
+  private void zoomOutInternal() {
+    Logging.d(TAG, "Zoom Out internal");
+    if (captureSession == null) {
+      Logging.d(TAG, "Camera is already stopped");
+      return;
+    }
+
+    //TODO(riccardo): implement
+    Logging.e(TAG, "Zoom Out not implemented for Camera2 API yet. Please use Camera1.");
+  }
+
+  private boolean focusInternal(Rect focusArea) {
+    Logging.d(TAG, "Zoom Out internal");
+    if (captureSession == null) {
+      Logging.d(TAG, "Camera is already stopped");
+      return false;
+    }
+
+    //TODO(riccardo): implement
+    Logging.e(TAG, "Focus not implemented for Camera2 API yet. Please use Camera1.");
+    return false;
   }
 
   private void reportError(String error) {

@@ -10,6 +10,7 @@
 
 package org.webrtc;
 
+import android.graphics.Rect;
 import android.media.MediaRecorder;
 
 /**
@@ -66,6 +67,34 @@ public interface CameraVideoCapturer extends VideoCapturer {
    * This function can be called from any thread.
    */
   void switchCamera(CameraSwitchHandler switchEventsHandler, String cameraName);
+
+  /**
+   * Enable camera torch
+   * This function can be called from any thread.
+   */
+  void enableTorch(CameraSwitchHandler switchEventsHandler);
+
+  /**
+   * Disable camera torch
+   * This function can be called from any thread.
+   */
+  void disableTorch(CameraSwitchHandler switchEventsHandler);
+
+  /**
+   * Zooms in the camera, if possible
+   */
+  void zoomIn();
+
+  /**
+   * Zooms in the camera, if possible
+   */
+  void zoomOut();
+
+  /**
+   * Focus the camera, if possible
+   * Returns whether operation succeeded
+   */
+  boolean focus(Rect focusRect);
 
   /**
    * MediaRecorder add/remove handler - one of these functions are invoked with the result of

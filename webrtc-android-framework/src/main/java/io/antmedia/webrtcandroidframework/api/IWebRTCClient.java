@@ -1,5 +1,6 @@
 package io.antmedia.webrtcandroidframework.api;
 
+import android.view.View;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.webrtc.DataChannel;
@@ -222,6 +223,31 @@ public interface IWebRTCClient {
      * Switches the front and rear camera
      */
     void switchCamera();
+
+    /**
+     * Enables camera torch
+     */
+    void enableTorch();
+
+    /**
+     * Disables camera torch
+     */
+    void disableTorch();
+
+    /**
+     * Zooms in the camera
+     */
+    void zoomIn();
+
+    /**
+     * Zooms out the camera
+     */
+    void zoomOut();
+
+    /**
+     * Sets the view that will be shown when focusing the camera
+     */
+    void setFocusView(View v);
 
     /**
      * This is used to change the capture format for the camera

@@ -11,19 +11,26 @@
 package io.antmedia.webrtcandroidframework.core;
 
 import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.Rect;
 import android.media.projection.MediaProjection;
 import android.os.Handler;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.GridLayout;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.constraintlayout.widget.ConstraintLayout;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.webrtc.AddIceObserver;
+import org.webrtc.AnimationUtil;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
 import org.webrtc.Camera2Enumerator;
@@ -40,6 +47,7 @@ import org.webrtc.Logging;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
+import org.webrtc.OverlayManager;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RTCStatsReport;
@@ -256,6 +264,9 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
     private boolean sendVideoEnabled = true;
 
     private boolean sendAudioEnabled = true;
+
+    //TODO(riccardo): add callback to successful focus, so we can control the focus view in the main application instead of here
+    private View focusView;
 
 
     public void createReconnectorRunnables() {
@@ -748,6 +759,9 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
             initializeVideoCapturer();
         }
 
+        //To fix stream blacking out after restarting
+        OverlayManager.createTexture();
+
         connectWebSocket();
         released = false;
     }
@@ -772,6 +786,7 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
             config.localVideoRenderer.setScalingType(config.scalingType);
             config.localVideoRenderer.setZOrderMediaOverlay(true);
             config.localVideoRenderer.setEnableHardwareScaler(true /* enabled */);
+            config.localVideoRenderer.setOnTouchListener(self::handleFocusTouch);
             localVideoSink.setTarget(config.localVideoRenderer);
         }
 
@@ -951,6 +966,111 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
             config.videoSource = StreamSource.FRONT_CAMERA;
         }
         executor.execute(this::switchCameraInternal);
+    }
+
+    @Override
+    public void enableTorch() {
+        executor.execute(this::enableTorchInternal);
+    }
+
+    private void enableTorchInternal() {
+        if (videoCapturer instanceof CameraVideoCapturer) {
+            if (!config.videoCallEnabled) {
+                Log.e(TAG,
+                        "Failed to enable camera torch. Video: " + config.videoCallEnabled);
+                return; // No video is sent or only one camera is available or error happened.
+            }
+            Log.d(TAG, "Enable Torch");
+            CameraVideoCapturer cameraVideoCapturer = (CameraVideoCapturer) videoCapturer;
+            cameraVideoCapturer.enableTorch(null);
+        } else {
+            Log.d(TAG, "Will not enable camera torch, video caputurer is not a camera");
+        }
+    }
+
+    @Override
+    public void disableTorch() {
+        executor.execute(this::disableTorchInternal);
+    }
+
+    private void disableTorchInternal() {
+        if (videoCapturer instanceof CameraVideoCapturer) {
+            if (!config.videoCallEnabled) {
+                Log.e(TAG,
+                        "Failed to disable camera torch. Video: " + config.videoCallEnabled);
+                return; // No video is sent or only one camera is available or error happened.
+            }
+            Log.d(TAG, "Disable Torch");
+            CameraVideoCapturer cameraVideoCapturer = (CameraVideoCapturer) videoCapturer;
+            cameraVideoCapturer.disableTorch(null);
+        } else {
+            Log.d(TAG, "Will not disable camera torch, video caputurer is not a camera");
+        }
+    }
+
+    @Override
+    public void zoomIn() {
+        executor.execute(this::zoomInInternal);
+    }
+
+    private void zoomInInternal() {
+        if (videoCapturer instanceof CameraVideoCapturer) {
+            if (!config.videoCallEnabled) {
+                Log.e(TAG,
+                        "Failed to zoom in camera. Video: " + config.videoCallEnabled);
+                return; // No video is sent or only one camera is available or error happened.
+            }
+            Log.d(TAG, "Zoom In Camera");
+            CameraVideoCapturer cameraVideoCapturer = (CameraVideoCapturer) videoCapturer;
+            cameraVideoCapturer.zoomIn();
+        } else {
+            Log.d(TAG, "Will not zoom in camera, video caputurer is not a camera");
+        }
+    }
+
+    @Override
+    public void zoomOut() {
+        executor.execute(this::zoomOutInternal);
+    }
+
+    private void zoomOutInternal() {
+        if (videoCapturer instanceof CameraVideoCapturer) {
+            if (!config.videoCallEnabled) {
+                Log.e(TAG,
+                        "Failed to zoom out camera. Video: " + config.videoCallEnabled);
+                return; // No video is sent or only one camera is available or error happened.
+            }
+            Log.d(TAG, "Zoom Out Camera");
+            CameraVideoCapturer cameraVideoCapturer = (CameraVideoCapturer) videoCapturer;
+            cameraVideoCapturer.zoomOut();
+        } else {
+            Log.d(TAG, "Will not zoom out camera, video caputurer is not a camera");
+        }
+    }
+
+    @Override
+    public void setFocusView(View v) {
+        this.focusView = v;
+        focusView.setVisibility(View.GONE);
+    }
+
+    /**
+     * Attempts to focus at the focus area. Returns whether sucessful
+     */
+    private boolean focus(Rect focusArea) {
+        if (videoCapturer instanceof CameraVideoCapturer) {
+            if (!config.videoCallEnabled) {
+                Log.e(TAG,
+                        "Failed to focus camera. Video: " + config.videoCallEnabled);
+                return false; // No video is sent or only one camera is available or error happened.
+            }
+            Log.d(TAG, "Focus Camera");
+            CameraVideoCapturer cameraVideoCapturer = (CameraVideoCapturer) videoCapturer;
+            return cameraVideoCapturer.focus(focusArea);
+        } else {
+            Log.d(TAG, "Will not focus camera, video caputurer is not a camera");
+            return false;
+        }
     }
 
     @Override
@@ -1167,6 +1287,11 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
         Log.i(TAG, "Switching to the selected device: " + device);
         audioManager.selectAudioDevice(device);
 
+    }
+
+    // By default, release and close the websocket
+    public void release() {
+        release(true);
     }
 
     // Disconnect from remote resources, dispose of local resources, and exit.
@@ -2921,5 +3046,79 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
         if (wsHandler != null && wsHandler.isConnected()) {
             wsHandler.getDebugInfo(streamId);
         }
+    }
+
+    //BEGIN Additional Methods
+    public void resizeSurfaceView(Activity activity) {
+        if (activity == null || activity.isFinishing() || config.localVideoRenderer == null) {
+            return;
+        }
+
+        //Fit surfaceview to screen
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        activity.getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+
+        ViewGroup.LayoutParams layoutParams = ((ViewGroup) config.localVideoRenderer.getParent()).getLayoutParams();
+
+        float deviceAspectRatio = (float) displayMetrics.widthPixels/ (float) displayMetrics.heightPixels;
+        float streamAspectRatio = 16f/9f;
+
+        if (deviceAspectRatio >= 16f/9f) {
+            layoutParams.width = Math.round(displayMetrics.heightPixels * streamAspectRatio);
+            layoutParams.height = displayMetrics.heightPixels;
+        } else {
+            layoutParams.width = displayMetrics.widthPixels;
+            layoutParams.height = Math.round(displayMetrics.widthPixels / streamAspectRatio);
+        }
+
+        ((ViewGroup) config.localVideoRenderer.getParent()).setLayoutParams(layoutParams);
+    }
+
+    public boolean handleFocusTouch(View view, MotionEvent event) {
+        if (event.getAction() != MotionEvent.ACTION_DOWN) {
+            return false;
+        }
+
+        Rect focusRect = calculateTapArea(event.getX(), event.getY(), view);
+        boolean focusSuccessful = focus(focusRect);
+
+        if (focusSuccessful) {
+            setFocusViewPosition((int) event.getX(), (int) event.getY());
+            return true;
+        }
+
+        return false;
+    }
+
+    public void setFocusViewPosition(int x, int y) {
+        if (config.localVideoRenderer == null) return;
+
+        ViewGroup.MarginLayoutParams layoutParams = (ViewGroup.MarginLayoutParams) focusView.getLayoutParams();
+        ConstraintLayout.MarginLayoutParams surfaceLayoutParams = (ConstraintLayout.MarginLayoutParams) ((ConstraintLayout) config.localVideoRenderer.getParent()).getLayoutParams();
+        layoutParams.leftMargin = clamp(x - (layoutParams.width/2), 0, surfaceLayoutParams.width - layoutParams.width);
+        layoutParams.topMargin = clamp(y - (layoutParams.height/2), 0, surfaceLayoutParams.height - layoutParams.height);
+        focusView.setLayoutParams(layoutParams);
+        AnimationUtil.flashAnimation(focusView, Color.parseColor("#93278f"), Color.parseColor("#d479d0"));
+    }
+
+    private Rect calculateTapArea(float x, float y, View view) {
+
+        double xPos = (2000 * x / view.getWidth()) - 1000;
+        double yPos = (2000 * y / view.getHeight()) - 1000;
+
+        int areaSize = 250;
+
+        int left = clamp((int) (xPos - (areaSize/2)), -1000, 1000);
+        int right = clamp((int) (xPos + (areaSize/2)), -1000, 1000);
+        int top = clamp((int) (yPos - (areaSize/2)), -1000, 1000);
+        int bottom = clamp((int) (yPos + (areaSize/2)), -1000, 1000);
+
+        return new Rect(left, top, right, bottom);
+    }
+
+    private int clamp(int x, int min, int max) {
+        if (x > max) return max;
+        if (x < min) return min;
+        return x;
     }
 }
