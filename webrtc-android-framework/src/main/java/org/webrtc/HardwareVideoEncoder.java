@@ -15,6 +15,7 @@ import static android.media.MediaCodecInfo.CodecProfileLevel.AVCProfileHigh;
 import static android.media.MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR;
 
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecInfo.CodecCapabilities;

@@ -786,7 +786,7 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
             config.localVideoRenderer.setScalingType(config.scalingType);
             config.localVideoRenderer.setZOrderMediaOverlay(true);
             config.localVideoRenderer.setEnableHardwareScaler(true /* enabled */);
-            config.localVideoRenderer.setOnTouchListener(self::handleFocusTouch);
+            config.localVideoRenderer.setOnTouchListener(this::handleFocusTouch);
             localVideoSink.setTarget(config.localVideoRenderer);
         }
 
