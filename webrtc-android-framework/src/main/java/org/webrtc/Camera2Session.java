@@ -22,6 +22,7 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.params.MeteringRectangle;
 import android.os.Handler;
 import android.util.Range;
 import android.view.Surface;
@@ -41,6 +42,7 @@ class Camera2Session implements CameraSession {
   private static final Histogram camera2ResolutionHistogram = Histogram.createEnumeration(
       "WebRTC.Android.Camera2.Resolution", CameraEnumerationAndroid.COMMON_RESOLUTIONS.size());
 
+  private static final float zoomSpeed = 0.3f;
   private static enum SessionState { RUNNING, STOPPED }
 
   private final Handler cameraThreadHandler;
@@ -64,6 +66,8 @@ class Camera2Session implements CameraSession {
   // Initialized when camera opens
   @Nullable private CameraDevice cameraDevice;
   @Nullable private Surface surface;
+
+  CaptureRequest.Builder captureRequestBuilder;
 
   // Initialized when capture session is created
   @Nullable private CameraCaptureSession captureSession;
@@ -161,8 +165,7 @@ class Camera2Session implements CameraSession {
          * TEMPLATE_RECORD: Stable frame rate is used, and post-processing is set for recording
          *   quality.
          */
-        final CaptureRequest.Builder captureRequestBuilder =
-            cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+        captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
         // Set auto exposure fps range.
         captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
             new Range<Integer>(captureFormat.framerate.min / fpsUnitFactor,
@@ -251,14 +254,14 @@ class Camera2Session implements CameraSession {
       final int[] availableFocusModes =
           cameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
       for (int mode : availableFocusModes) {
-        if (mode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO) {
+        if (mode == CaptureRequest.CONTROL_AF_MODE_AUTO) {
           captureRequestBuilder.set(
-              CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
-          Logging.d(TAG, "Using continuous video auto-focus.");
+              CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+          Logging.d(TAG, "Using CONTROL_AF_MODE_AUTO.");
           return;
         }
       }
-      Logging.d(TAG, "Auto-focus is not available.");
+      Logging.d(TAG, "CONTROL_AF_MODE_AUTO is not available.");
     }
   }
 
@@ -382,7 +385,6 @@ class Camera2Session implements CameraSession {
     Logging.d(TAG, "Enable torch camera2 session on camera " + cameraId);
     checkIsOnCameraThread();
     if (state != SessionState.STOPPED) {
-      state = SessionState.STOPPED;
       enableTorchInternal();
     }
   }
@@ -392,7 +394,6 @@ class Camera2Session implements CameraSession {
     Logging.d(TAG, "Disable torch camera2 session on camera " + cameraId);
     checkIsOnCameraThread();
     if (state != SessionState.STOPPED) {
-      state = SessionState.STOPPED;
       disableTorchInternal();
     }
   }
@@ -402,7 +403,6 @@ class Camera2Session implements CameraSession {
     Logging.d(TAG, "Set zoom camera2 session on camera " + cameraId);
     checkIsOnCameraThread();
     if (state != SessionState.STOPPED) {
-      state = SessionState.STOPPED;
       zoomInInternal();
     }
   }
@@ -412,18 +412,16 @@ class Camera2Session implements CameraSession {
     Logging.d(TAG, "Set zoom camera2 session on camera " + cameraId);
     checkIsOnCameraThread();
     if (state != SessionState.STOPPED) {
-      state = SessionState.STOPPED;
       zoomOutInternal();
     }
   }
 
   @Override
-  public boolean focus(Rect focusArea) {
+  public boolean focus(float x, float y, int w, int h) {
     Logging.d(TAG, "Focus camera2 session on camera " + cameraId);
     checkIsOnCameraThread();
     if (state != SessionState.STOPPED) {
-      state = SessionState.STOPPED;
-      return focusInternal(focusArea);
+      return focusInternal(x, y, w, h);
     }
     return false;
   }
@@ -459,12 +457,18 @@ class Camera2Session implements CameraSession {
       return;
     }
 
+    Boolean hasFlash = cameraCharacteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+    if (hasFlash == null || !hasFlash) {
+      Logging.d(TAG, "No flash on this device");
+      return;
+    }
+
     try {
-      cameraManager.setTorchMode(cameraId, true);
+      captureRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
+      captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, cameraThreadHandler);
       Logging.d(TAG, "Enable torch done");
     } catch (CameraAccessException e) {
-      e.printStackTrace();
-      Logging.d(TAG, "Enable torch failed");
+      reportError("Failed to enable torch: " + e);
     }
   }
 
@@ -477,12 +481,18 @@ class Camera2Session implements CameraSession {
       return;
     }
 
+    Boolean hasFlash = cameraCharacteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+    if (hasFlash == null || !hasFlash) {
+      Logging.d(TAG, "No flash on this device");
+      return;
+    }
+
     try {
-      cameraManager.setTorchMode(cameraId, false);
+      captureRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
+      captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, cameraThreadHandler);
       Logging.d(TAG, "Disable torch done");
     } catch (CameraAccessException e) {
-      e.printStackTrace();
-      Logging.d(TAG, "Disable torch failed");
+      reportError("Failed to disable torch: " + e);
     }
   }
 
@@ -493,8 +503,38 @@ class Camera2Session implements CameraSession {
       return;
     }
 
-    //TODO(riccardo): implement
-    Logging.e(TAG, "Zoom In not implemented for Camera2 API yet. Please use Camera1.");
+    try {
+      Rect currentCropRegion = captureRequestBuilder.get(CaptureRequest.SCALER_CROP_REGION);
+      Rect sensorRect = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+      if (currentCropRegion == null) {
+        currentCropRegion = sensorRect;
+      }
+
+      float currentZoom = (float) sensorRect.width() / currentCropRegion.width(); //1.0 = no zoom
+      Float maxZoom = cameraCharacteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+      if (maxZoom == null) {
+        maxZoom = 1.0f;
+      }
+
+      float newZoom = Math.min(currentZoom + zoomSpeed, maxZoom);
+      if (newZoom == currentZoom) {
+        return;
+      }
+
+      // Calculate the new crop region for the desired zoom
+      int newCropWidth = (int) (sensorRect.width() / newZoom);
+      int newCropHeight = (int) (sensorRect.height() / newZoom);
+      int cropX = (sensorRect.width() - newCropWidth) / 2;
+      int cropY = (sensorRect.height() - newCropHeight) / 2;
+      Rect newCropRegion = new Rect(cropX, cropY, cropX + newCropWidth, cropY + newCropHeight);
+
+      // Apply the new zoom
+      captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, newCropRegion);
+      captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, cameraThreadHandler);
+      Logging.d(TAG, "Zoom In done");
+    } catch (CameraAccessException e) {
+      reportError("Failed to Zoom In: " + e);
+    }
   }
 
   private void zoomOutInternal() {
@@ -504,20 +544,84 @@ class Camera2Session implements CameraSession {
       return;
     }
 
-    //TODO(riccardo): implement
-    Logging.e(TAG, "Zoom Out not implemented for Camera2 API yet. Please use Camera1.");
+    try {
+      Rect currentCropRegion = captureRequestBuilder.get(CaptureRequest.SCALER_CROP_REGION);
+      Rect sensorRect = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+      if (currentCropRegion == null) {
+        currentCropRegion = sensorRect;
+      }
+
+      float currentZoom = (float) sensorRect.width() / currentCropRegion.width();
+      float newZoom = Math.max(currentZoom - zoomSpeed, 1.0f); // Min zoom is 1.0
+      if (newZoom == currentZoom) {
+        return;
+      }
+
+      // Calculate the new crop region for the desired zoom
+      int newCropWidth = (int) (sensorRect.width() / newZoom);
+      int newCropHeight = (int) (sensorRect.height() / newZoom);
+      int cropX = (sensorRect.width() - newCropWidth) / 2;
+      int cropY = (sensorRect.height() - newCropHeight) / 2;
+      Rect newCropRegion = new Rect(cropX, cropY, cropX + newCropWidth, cropY + newCropHeight);
+
+      // Apply the new zoom
+      captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, newCropRegion);
+      captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, cameraThreadHandler);
+      Logging.d(TAG, "Zoom Out done");
+    } catch (CameraAccessException e) {
+      reportError("Failed to Zoom Out: " + e);
+    }
   }
 
-  private boolean focusInternal(Rect focusArea) {
+  private boolean focusInternal(float x, float y, int w, int h) {
     Logging.d(TAG, "Zoom Out internal");
-    if (captureSession == null) {
+    if (captureSession == null || cameraDevice == null || captureRequestBuilder == null) {
       Logging.d(TAG, "Camera is already stopped");
       return false;
     }
 
-    //TODO(riccardo): implement
-    Logging.e(TAG, "Focus not implemented for Camera2 API yet. Please use Camera1.");
-    return false;
+    MeteringRectangle meteringRect = calculateMeteringRect(x, y, w, h);
+
+    try {
+      // Update the AutoFocus (AF) and send the trigger
+      captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+      captureRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS, new MeteringRectangle[]{meteringRect});
+      captureRequestBuilder.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[]{meteringRect});
+      captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+      captureSession.capture(captureRequestBuilder.build(), null, cameraThreadHandler);
+
+      // Reset the AF trigger in the next request
+      captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+      captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, cameraThreadHandler);
+
+    } catch (CameraAccessException e) {
+      reportError("Failed to focus: " + e);
+    }
+
+    return true;
+  }
+
+  private MeteringRectangle calculateMeteringRect(float x, float y, int w, int h) {
+    Rect sensorArraySize = cameraCharacteristics.get(
+            CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE
+    );
+
+    if (sensorArraySize == null) {
+      return new MeteringRectangle(0, 0, 0, 0, 0);
+    }
+
+    int sensorX = (int) (x / w * sensorArraySize.width());
+    int sensorY = (int) (y / h * sensorArraySize.height());
+
+    // Create focus area
+    int areaSize = 250;
+    int halfSize = areaSize / 2;
+
+    int left = Math.max(0, Math.min(sensorX - halfSize, sensorArraySize.width() - areaSize));
+    int top = Math.max(0, Math.min(sensorY - halfSize, sensorArraySize.height() - areaSize));
+
+    return new MeteringRectangle(left, top, areaSize, areaSize,
+            MeteringRectangle.METERING_WEIGHT_MAX);
   }
 
   private void reportError(String error) {

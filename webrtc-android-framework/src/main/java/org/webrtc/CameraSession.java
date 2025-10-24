@@ -64,7 +64,7 @@ interface CameraSession {
    * Focus the camera, if possible
    * Returns whether operation succeeded
    */
-  boolean focus(Rect focusArea);
+  boolean focus(float x, float y, int w, int h);
 
   static int getDeviceOrientation(Context context) {
     final WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);

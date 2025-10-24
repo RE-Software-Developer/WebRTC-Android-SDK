@@ -404,9 +404,9 @@ abstract class CameraCapturer implements CameraVideoCapturer {
   }
 
   @Override
-  public boolean focus(Rect focusArea) {
+  public void focus(float x, float y, int w, int h) {
     Logging.d(TAG, "Focus");
-    return focusInternal(focusArea);
+    cameraThreadHandler.post(() -> focusInternal(x, y, w, h));
   }
 
   @Override
@@ -597,7 +597,7 @@ abstract class CameraCapturer implements CameraVideoCapturer {
     Logging.d(TAG, "zoomOut done");
   }
 
-  private boolean focusInternal(Rect focusArea) {
+  private boolean focusInternal(float x, float y, int w, int h) {
     Logging.d(TAG, "focus internal");
 
     synchronized (stateLock) {
@@ -608,7 +608,7 @@ abstract class CameraCapturer implements CameraVideoCapturer {
 
       Logging.d(TAG, "focus");
 
-      boolean focusSuccess = currentSession.focus(focusArea);
+      boolean focusSuccess = currentSession.focus(x, y, w, h);
       Logging.d(TAG, "focus done");
       return focusSuccess;
     }

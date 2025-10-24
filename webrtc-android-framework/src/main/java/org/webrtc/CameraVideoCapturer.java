@@ -92,9 +92,8 @@ public interface CameraVideoCapturer extends VideoCapturer {
 
   /**
    * Focus the camera, if possible
-   * Returns whether operation succeeded
    */
-  boolean focus(Rect focusRect);
+  void focus(float x, float y, int w, int h);
 
   /**
    * MediaRecorder add/remove handler - one of these functions are invoked with the result of

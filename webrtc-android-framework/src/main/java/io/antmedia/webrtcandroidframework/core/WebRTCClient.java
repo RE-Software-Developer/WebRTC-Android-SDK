@@ -12,7 +12,6 @@ package io.antmedia.webrtcandroidframework.core;
 
 import android.app.Activity;
 import android.graphics.Color;
-import android.graphics.Rect;
 import android.media.projection.MediaProjection;
 import android.os.Handler;
 import android.util.DisplayMetrics;
@@ -1057,19 +1056,18 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
     /**
      * Attempts to focus at the focus area. Returns whether sucessful
      */
-    private boolean focus(Rect focusArea) {
+    private void focus(float x, float y, int w, int h) {
         if (videoCapturer instanceof CameraVideoCapturer) {
             if (!config.videoCallEnabled) {
                 Log.e(TAG,
                         "Failed to focus camera. Video: " + config.videoCallEnabled);
-                return false; // No video is sent or only one camera is available or error happened.
+                return; // No video is sent or only one camera is available or error happened.
             }
             Log.d(TAG, "Focus Camera");
             CameraVideoCapturer cameraVideoCapturer = (CameraVideoCapturer) videoCapturer;
-            return cameraVideoCapturer.focus(focusArea);
+            cameraVideoCapturer.focus(x, y, w, h);
         } else {
             Log.d(TAG, "Will not focus camera, video caputurer is not a camera");
-            return false;
         }
     }
 
@@ -3079,15 +3077,12 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
             return false;
         }
 
-        Rect focusRect = calculateTapArea(event.getX(), event.getY(), view);
-        boolean focusSuccessful = focus(focusRect);
+        executor.execute(() -> {
+            focus(event.getX(), event.getY(), view.getWidth(), view.getHeight());
+        });
+        setFocusViewPosition((int) event.getX(), (int) event.getY());
 
-        if (focusSuccessful) {
-            setFocusViewPosition((int) event.getX(), (int) event.getY());
-            return true;
-        }
-
-        return false;
+        return true;
     }
 
     public void setFocusViewPosition(int x, int y) {
@@ -3099,21 +3094,6 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
         layoutParams.topMargin = clamp(y - (layoutParams.height/2), 0, surfaceLayoutParams.height - layoutParams.height);
         focusView.setLayoutParams(layoutParams);
         AnimationUtil.flashAnimation(focusView, Color.parseColor("#93278f"), Color.parseColor("#d479d0"));
-    }
-
-    private Rect calculateTapArea(float x, float y, View view) {
-
-        double xPos = (2000 * x / view.getWidth()) - 1000;
-        double yPos = (2000 * y / view.getHeight()) - 1000;
-
-        int areaSize = 250;
-
-        int left = clamp((int) (xPos - (areaSize/2)), -1000, 1000);
-        int right = clamp((int) (xPos + (areaSize/2)), -1000, 1000);
-        int top = clamp((int) (yPos - (areaSize/2)), -1000, 1000);
-        int bottom = clamp((int) (yPos + (areaSize/2)), -1000, 1000);
-
-        return new Rect(left, top, right, bottom);
     }
 
     private int clamp(int x, int min, int max) {

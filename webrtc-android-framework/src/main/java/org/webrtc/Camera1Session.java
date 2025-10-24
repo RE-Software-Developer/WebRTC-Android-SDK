@@ -245,10 +245,10 @@ class Camera1Session implements CameraSession {
   }
 
   @Override
-  public boolean focus(Rect focusArea) {
+  public boolean focus(float x, float y, int w, int h) {
     Logging.d(TAG, "Focus camera1 session on camera " + cameraId);
     if (state != SessionState.STOPPED) {
-      return focusInternal(focusArea);
+      return focusInternal(x, y, w, h);
     }
     return false;
   }
@@ -402,12 +402,14 @@ class Camera1Session implements CameraSession {
     Logging.d(TAG, "Zoom Out done");
   }
 
-  private boolean focusInternal(Rect focusRect) {
+  private boolean focusInternal(float x, float y, int w, int h) {
     Logging.d(TAG, "Focus internal");
     if (state == SessionState.STOPPED) {
       Logging.d(TAG, "Camera is already stopped");
       return false;
     }
+
+    Rect focusRect = calculateTapArea(x, y, w, h);
 
     try {
       Camera.Parameters parameters = camera.getParameters();
@@ -444,6 +446,20 @@ class Camera1Session implements CameraSession {
     }
   }
 
+  private Rect calculateTapArea(float x, float y, int w, int h) {
+
+    double xPos = (2000 * x / w) - 1000;
+    double yPos = (2000 * y / h) - 1000;
+
+    int areaSize = 250;
+
+    int left = Math.clamp((int) (xPos - (areaSize/2)), -1000, 1000);
+    int right = Math.clamp((int) (xPos + (areaSize/2)), -1000, 1000);
+    int top = Math.clamp((int) (yPos - (areaSize/2)), -1000, 1000);
+    int bottom = Math.clamp((int) (yPos + (areaSize/2)), -1000, 1000);
+
+    return new Rect(left, top, right, bottom);
+  }
 
   private void listenForTextureFrames() {
     surfaceTextureHelper.startListening((VideoFrame frame) -> {

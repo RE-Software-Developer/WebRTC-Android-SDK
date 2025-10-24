@@ -46,10 +46,45 @@ public class Camera2Enumerator implements CameraEnumerator {
     this.cameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
   }
 
+  // Note: This function used to return the name for all valid cameras. It has been changed to only return the name for the main front and back camera
+  // This is because some of the other cameras have an undesirable field of view, and don't allow the flash.
+  // Also, the typical user only expects one front facing and back facing camera
   @Override
   public String[] getDeviceNames() {
     try {
-      return cameraManager.getCameraIdList();
+      String[] cameraIds = cameraManager.getCameraIdList();
+      List<String> mainCameras = new ArrayList<>();
+
+      boolean foundBack = false;
+      boolean foundFront = false;
+
+      for (String id : cameraIds) {
+        try {
+          CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(id);
+          Integer lensFacing = characteristics.get(CameraCharacteristics.LENS_FACING);
+          if (lensFacing == null) {
+            continue;
+          }
+
+          // Only add the first front/back camera found
+          if (lensFacing == CameraCharacteristics.LENS_FACING_BACK && !foundBack) {
+            mainCameras.add(id);
+            foundBack = true;
+          } else if (lensFacing == CameraCharacteristics.LENS_FACING_FRONT && !foundFront) {
+            mainCameras.add(id);
+            foundFront = true;
+          }
+
+          if (foundBack && foundFront) {
+            break;
+          }
+
+        } catch (CameraAccessException e) {
+          continue; // Skip this camera if we can't access its characteristics
+        }
+      }
+
+      return mainCameras.toArray(new String[0]);
     } catch (CameraAccessException e) {
       Logging.e(TAG, "Camera access exception", e);
       return new String[] {};
