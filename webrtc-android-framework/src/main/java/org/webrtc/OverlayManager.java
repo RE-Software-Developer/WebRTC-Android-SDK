@@ -112,10 +112,11 @@ public class OverlayManager {
         }
 
         OverlayManager.renderThreadHandler.post(() -> {
-            if (textureId != 0) {
-                GLES20.glDeleteTextures(1, new int[] { textureId }, 0);
-            }
+            int oldTextureId = textureId;
             textureId = GlUtil.loadTexture(currentBitmap);
+            if (oldTextureId != 0) {
+                GLES20.glDeleteTextures(1, new int[] { oldTextureId }, 0);
+            }
         });
     }
 

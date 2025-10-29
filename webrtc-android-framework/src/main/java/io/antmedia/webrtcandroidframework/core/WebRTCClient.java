@@ -638,7 +638,7 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
                 remoteVideoSink.setTarget(renderer);
                 renderer.init(eglBase.getEglBaseContext(), null);
                 renderer.setScalingType(config.scalingType);
-                renderer.setEnableHardwareScaler(true);
+                renderer.setEnableHardwareScaler(false); /* This was enabled, but causes weird resizing and resolutions on Samsung S23 Ultra */
                 renderer.setTag(renderer.getId(), remoteVideoSink);
             }
             videoTrack.addSink(remoteVideoSink);
@@ -784,7 +784,7 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
             config.localVideoRenderer.init(eglBase.getEglBaseContext(), null);
             config.localVideoRenderer.setScalingType(config.scalingType);
             config.localVideoRenderer.setZOrderMediaOverlay(true);
-            config.localVideoRenderer.setEnableHardwareScaler(true /* enabled */);
+            config.localVideoRenderer.setEnableHardwareScaler(false); /* This was enabled, but causes weird resizing and resolutions on Samsung S23 Ultra */
             config.localVideoRenderer.setOnTouchListener(this::handleFocusTouch);
             localVideoSink.setTarget(config.localVideoRenderer);
         }
@@ -840,6 +840,52 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
             createMediaConstraintsInternal();
             createVideoTrack(videoCapturer);
             createAudioTrack();
+        });
+    }
+
+    public void releaseVideoCapturer() {
+        localVideoTrack = null;
+        localAudioTrack = null;
+
+        mainHandler.post(() -> {
+            executor.execute(() -> {
+                if (videoCapturer != null && !videoCapturerStopped) {
+                    try {
+                        videoCapturer.stopCapture();
+                        videoCapturer.dispose();
+                        videoCapturer = null;
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    videoCapturerStopped = true;
+                }
+
+                Log.d(TAG, "Closing audio source.");
+                if (audioSource != null) {
+                    audioSource.dispose();
+                    audioSource = null;
+                }
+                Log.d(TAG, "Stopping capture.");
+                if (videoCapturer != null && !videoCapturerStopped) {
+                    try {
+                        videoCapturer.stopCapture();
+                        videoCapturer.dispose();
+                        videoCapturer = null;
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    videoCapturerStopped = true;
+                }
+                Log.d(TAG, "Closing video source.");
+                if (videoSource != null) {
+                    videoSource.dispose();
+                    videoSource = null;
+                }
+                if (surfaceTextureHelper != null) {
+                    surfaceTextureHelper.dispose();
+                    surfaceTextureHelper = null;
+                }
+            });
         });
     }
 
@@ -955,6 +1001,30 @@ public class WebRTCClient implements IWebRTCClient, AntMediaSignallingEvents {
 
             wsHandler.stop(streamId);
         }
+    }
+
+    public void stopPublish(String streamId) {
+        if(released){
+            return;
+        }
+
+        mainHandler.post(() -> {
+            executor.execute(() -> {
+                PeerInfo peerInfo = peers.get(streamId);
+                if (peerInfo != null) {
+                    Log.d(TAG, "Closing peer connections for " + peerInfo.id);
+                    PeerConnection peerConnection = peerInfo.peerConnection;
+                    if (peerConnection != null) {
+                        peerConnection.dispose();
+                        peerInfo.peerConnection = null;
+                    }
+                }
+                peers.clear();
+
+                Log.d(TAG, "Closing peer connection done.");
+                onPeerConnectionClosed();
+            });
+        });
     }
 
     @Override
